@@ -1,4 +1,4 @@
-# HidXInputBridge
+# Scufpad
 
 A Linux application that bridges a Scuf Envision Pro V2 controller to a virtual Xbox Elite 2 controller via the uinput
 subsystem.
@@ -37,7 +37,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 sudo modprobe uinput
 
 # 4. Run the bridge
-dotnet run --project src/HidXInputBridge
+dotnet run --project src/Scufpad
 ```
 
 ## Game-Specific Configuration
@@ -127,11 +127,11 @@ ls -la /dev/uinput
 
 ```bash
 # Run from source
-dotnet run --project src/HidXInputBridge
+dotnet run --project src/Scufpad
 
 # Or build and run
 dotnet build
-./src/HidXInputBridge/bin/Debug/net10.0/HidXInputBridge
+./src/Scufpad/bin/Debug/net10.0/Scufpad
 
 # AOT publish (single binary)
 dotnet publish -c Release -r linux-x64
@@ -160,7 +160,7 @@ Games see standard Xbox controller
 ### Project Structure
 
 ```
-src/HidXInputBridge/
+src/Scufpad/
 ├── Discovery/           # Device discovery via /sys/class
 │   └── DeviceDiscovery.cs
 ├── Input/               # Input device readers
@@ -318,8 +318,8 @@ dotnet publish -c Release -r linux-x64
 dotnet test
 
 # Run specific test project
-dotnet test tests/hidxinputbridge.Tests.Unit
-dotnet test tests/hidxinputbridge.Tests.Integration
+dotnet test tests/scufpad.Tests.Unit
+dotnet test tests/scufpad.Tests.Integration
 
 # Test with evtest
 evtest  # Select the virtual Xbox controller to verify output
