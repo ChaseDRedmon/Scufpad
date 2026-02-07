@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/sln/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="CLAUDE.md" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/HidXInputBridge/hidxinputbridge.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/hidxinputbridge.Tests.Unit/hidxinputbridge.Tests.Unit.csproj" />
+    <Project Path="tests/hidxinputbridge.Tests.Integration/hidxinputbridge.Tests.Integration.csproj" />
+  </Folder>
+</Solution>
