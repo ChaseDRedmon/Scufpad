@@ -287,13 +287,21 @@ fn respond(
                 Ok(current) => current.clone(),
                 Err(_) => return failure("State unavailable"),
             };
-            ControlResponse {
+            let mut response = ControlResponse {
                 success: true,
                 state: Some(current.state),
                 profile: (request.command == ControlCommand::GetProfile)
                     .then(|| (*current.profile).clone()),
                 error: None,
+            };
+            // Near the frame limit, prioritize the profile over optional telemetry.
+            // Clients can always request that telemetry separately through GetState.
+            if request.command == ControlCommand::GetProfile
+                && write_message(&mut io::sink(), &response).is_err()
+            {
+                response.state = None;
             }
+            response
         }
         _ => submit(request, commands),
     }
@@ -438,6 +446,108 @@ fn serve_connection(
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn near_limit_profile_roundtrips_without_optional_state_overflow() {
+        use scufpad_core::{MacroDefinition, MacroStep, MacroStepKind, validate_profile};
+        let mut profile = RemapProfile {
+            macros: (0..128)
+                .map(|index| MacroDefinition {
+                    id: format!("Macro{index}"),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let (mut low, mut high) = (0usize, 128 * 256);
+        while low < high {
+            let count = (low + high).div_ceil(2);
+            for (index, definition) in profile.macros.iter_mut().enumerate() {
+                definition.steps = vec![
+                    MacroStep {
+                        kind: MacroStepKind::Delay,
+                        delay_ms: 1,
+                        code: 0
+                    };
+                    count.saturating_sub(index * 256).min(256)
+                ];
+            }
+            let response = ControlResponse {
+                success: true,
+                profile: Some(profile.clone()),
+                ..Default::default()
+            };
+            if write_message(&mut io::sink(), &response).is_ok() {
+                low = count;
+            } else {
+                high = count - 1;
+            }
+        }
+        for (index, definition) in profile.macros.iter_mut().enumerate() {
+            definition
+                .steps
+                .truncate(low.saturating_sub(index * 256).min(256));
+            definition.steps.resize(
+                low.saturating_sub(index * 256).min(256),
+                MacroStep {
+                    kind: MacroStepKind::Delay,
+                    delay_ms: 1,
+                    code: 0,
+                },
+            );
+        }
+        validate_profile(&profile).unwrap();
+        let request = ControlRequest {
+            command: ControlCommand::ApplyProfile,
+            profile: Some(profile.clone()),
+        };
+        let mut bytes = Vec::new();
+        write_message(&mut bytes, &request).unwrap();
+        let decoded: ControlRequest = read_message(&mut bytes.as_slice()).unwrap();
+        assert_eq!(decoded.profile.as_ref(), Some(&profile));
+        let state = BridgeState::default();
+        assert!(
+            write_message(
+                &mut io::sink(),
+                &ControlResponse {
+                    success: true,
+                    state: Some(state.clone()),
+                    profile: Some(profile.clone()),
+                    error: None
+                }
+            )
+            .is_err()
+        );
+        let snapshot = RwLock::new(Snapshot {
+            state,
+            profile: Arc::new(profile.clone()),
+        });
+        let (commands, _receiver) = mpsc::sync_channel(1);
+        let response = respond(
+            ControlRequest {
+                command: ControlCommand::GetProfile,
+                profile: None,
+            },
+            &commands,
+            &snapshot,
+        );
+        let mut bytes = Vec::new();
+        write_message(&mut bytes, &response).unwrap();
+        let decoded: ControlResponse = read_message(&mut bytes.as_slice()).unwrap();
+        assert!(decoded.success);
+        assert_eq!(decoded.profile, Some(profile));
+        assert!(decoded.state.is_none());
+        let response = respond(
+            ControlRequest {
+                command: ControlCommand::GetState,
+                profile: None,
+            },
+            &commands,
+            &snapshot,
+        );
+        assert_eq!(response.state, Some(BridgeState::default()));
+        assert!(response.profile.is_none());
+    }
 
     #[test]
     fn connection_pool_rejects_overflow_and_drains_queued_clients() {

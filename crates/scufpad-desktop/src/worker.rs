@@ -98,6 +98,23 @@ impl Worker {
             wake: thread.thread().clone(),
         }
     }
+    #[cfg(test)]
+    pub fn test_channel() -> (Self, SyncSender<Event>) {
+        let (actions, _receive) = mpsc::sync_channel(8);
+        let (send, events) = mpsc::sync_channel(32);
+        (
+            Self {
+                actions,
+                events,
+                cancel: Arc::new(AtomicBool::new(false)),
+                stop_all: Arc::new(AtomicBool::new(false)),
+                stop_generation: Arc::new(AtomicU64::new(0)),
+                wake: thread::current(),
+            },
+            send,
+        )
+    }
+
     pub fn send(&self, action: Action) -> Result<(), String> {
         self.actions
             .try_send((action, self.stop_generation.load(Ordering::Acquire)))

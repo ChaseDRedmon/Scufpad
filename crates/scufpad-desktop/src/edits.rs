@@ -1,6 +1,10 @@
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use scufpad_core::*;
 use std::path::{Path, PathBuf};
+
+#[cfg(test)]
+#[path = "edits_fuzz_tests.rs"]
+mod fuzz_tests;
 
 pub const EXTRAS: [PhysicalControl; 6] = [
     PhysicalControl::RearOuterLeft,
@@ -33,6 +37,17 @@ pub const STEP_KINDS: [MacroStepKind; 7] = [
 
 pub fn checked(profile: RemapProfile) -> Result<RemapProfile> {
     validate_profile(&profile)?;
+    // GetProfile's profile-only envelope is larger than ApplyProfile's. The daemon
+    // omits optional telemetry near the limit, so a workspace fits both directions.
+    write_message(
+        &mut std::io::sink(),
+        &ControlResponse {
+            success: true,
+            profile: Some(profile.clone()),
+            ..Default::default()
+        },
+    )
+    .context("Profile is too large for the 1 MiB bridge limit; reduce macros or layers.")?;
     Ok(profile)
 }
 
@@ -62,9 +77,13 @@ pub fn set_binding(
 
 pub fn rename_layer(profile: &RemapProfile, index: usize, name: &str) -> Result<RemapProfile> {
     let mut next = profile.clone();
-    let old = next.layers[index].id.clone();
+    let layer = next
+        .layers
+        .get_mut(index)
+        .ok_or_else(|| anyhow::anyhow!("Select a layer."))?;
+    let old = layer.id.clone();
     let name = name.trim();
-    next.layers[index].id = name.into();
+    layer.id = name.into();
     if next.base_layer == old {
         next.base_layer = name.into();
     }
@@ -89,7 +108,12 @@ pub fn save_macro(
 ) -> Result<RemapProfile> {
     let mut next = profile.clone();
     if let Some(index) = index {
-        let old = next.macros[index].id.clone();
+        let old = next
+            .macros
+            .get(index)
+            .ok_or_else(|| anyhow::anyhow!("Select a macro."))?
+            .id
+            .clone();
         for layer in &mut next.layers {
             for binding in layer.bindings.values_mut() {
                 if binding.kind == BindingKind::Macro && binding.reference == old {

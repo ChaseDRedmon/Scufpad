@@ -1,4 +1,7 @@
 use scufpad_core::*;
+
+#[path = "fuzz/engine.rs"]
+mod fuzz;
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     cell::Cell,

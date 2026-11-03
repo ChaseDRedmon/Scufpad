@@ -1,5 +1,28 @@
 # Rust workspace progress
 
+## Hardware-free seeded fuzzing and stress — 2026-10-29
+
+- Added deterministic mapping/ownership, USB mutation, editor/reference/draft and
+  headless composer campaigns without new dependencies. The extended engine run
+  passed 4,718,592 randomized frames plus deadline witnesses; successful tick paths
+  made zero counted Rust heap allocations. This is not coverage-guided fuzzing.
+- Reproduced/fixed two stale-index editor panics, structurally valid but oversized
+  workspace acceptance, near-limit GetProfile telemetry overflow, and hidden load
+  rejection/applied-state errors. Existing 1 MiB framing and hardware safeguards
+  remain intact. Independent review found the envelope and oracle gaps; fixes and
+  positive witnesses were reconciled with no remaining material review finding.
+- Local final gate: **121 Rust tests passed in debug and Release, four ignored**;
+  all three non-live
+  opt-in stress checks separately passed. **64 Python checks**, strict Clippy,
+  formatting, optimized workspace build and desktop self-test passed.
+- CPU-2-pinned Release diagnostics: deliverable 32-layer/128-macro edits about
+  1.9 ms per rename/edit pair; repeated 4,096-frame headless composer runs had p50
+  about 0.20 ms and p95 0.21–0.30 ms. Warm pure engine workloads remained allocation-free. These are
+  not physical latency, GPU, full desktop idle CPU/RSS, or long-term leak results.
+- Report and runnable checks: [rust-fuzz.md](rust-fuzz.md). Evidence remains in
+  `/tmp/opencode/scufpad-fuzz-20261029-1/`. No commit, push, GitHub mutation, native
+  window, real profile/device access, installed update or live output occurred.
+
 ## History migration and issue triage — 2026-10-29
 
 - Initialized Git in this workspace, retaining original `release` commit `2ca0975`

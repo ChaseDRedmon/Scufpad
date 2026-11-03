@@ -7,6 +7,10 @@ use eframe::egui::{self, Color32, RichText};
 use scufpad_core::*;
 use std::path::PathBuf;
 
+#[cfg(test)]
+#[path = "render_fuzz_tests.rs"]
+mod fuzz_tests;
+
 enum Confirm {
     New,
     Load(PathBuf),
@@ -51,9 +55,12 @@ pub struct Studio {
 impl Studio {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        Self::with_worker(Worker::spawn(cc.egui_ctx.clone()))
+    }
+
+    fn with_worker(worker: Worker) -> Self {
         let profile = RemapProfile::default();
         let binding = BindingDraft::load(&profile, 0, PhysicalControl::A);
-        let worker = Worker::spawn(cc.egui_ctx.clone());
         Self {
             profile_name: profile.name.clone(),
             layer_name: profile.layers[0].id.clone(),
@@ -151,7 +158,7 @@ impl Studio {
             Err(error) => self.report(Err(error)),
         }
     }
-    fn load(&mut self, profile: RemapProfile, path: Option<PathBuf>, dirty: bool) {
+    fn load(&mut self, profile: RemapProfile, path: Option<PathBuf>, dirty: bool) -> bool {
         match checked(profile) {
             Ok(profile) => {
                 self.profile = profile;
@@ -163,8 +170,12 @@ impl Studio {
                 self.revision += 1;
                 self.macro_selection = None;
                 self.refresh_fields();
+                true
             }
-            Err(error) => self.report(Err(error)),
+            Err(error) => {
+                self.report(Err(error));
+                false
+            }
         }
     }
     fn select_control(&mut self, control: PhysicalControl) {
@@ -198,7 +209,9 @@ impl Studio {
     }
     fn execute_confirm(&mut self, confirm: Confirm, ctx: &egui::Context) {
         match confirm {
-            Confirm::New => self.load(RemapProfile::default(), None, true),
+            Confirm::New => {
+                self.load(RemapProfile::default(), None, true);
+            }
             Confirm::Load(path) => self.send(Action::Load {
                 path,
                 revision: self.revision,
@@ -272,7 +285,8 @@ impl Studio {
                 Event::Done(result) => {
                     self.busy = false;
                     match result {
-                        Ok(message) => self.say(message),
+                        Ok(message) if !self.error => self.say(message),
+                        Ok(_) => {} // Retain a rejected/stale load error until the next action.
                         Err(error) => {
                             self.message = error;
                             self.error = true;
@@ -295,8 +309,8 @@ impl Studio {
             fields_dirty,
             self.macro_editor.is_some(),
             self.busy,
-        ) {
-            self.load(profile, None, false);
+        ) && self.load(profile, None, false)
+        {
             self.pending_apply = false;
         }
         if !self.starting && !self.busy && !self.library_requested {

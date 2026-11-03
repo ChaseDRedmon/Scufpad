@@ -110,6 +110,29 @@ For the isolated tray integration check, install `dbus-run-session` and the syst
 Python D-Bus and GLib bindings, then run `/usr/bin/python3 tests/rust_tray_test.py`.
 The check uses a private session bus and does not access controller hardware.
 
+### Hardware-free randomized checks
+
+The normal Rust test suite includes fixed-seed mapping/ownership, USB-report mutation,
+editor reference/draft, and headless macro-composer checks. Longer campaigns are opt-in:
+
+```sh
+cargo test -p scufpad-core --test engine --release --locked extended_seeded_campaign -- --ignored
+cargo test -p scufpad-desktop --release --locked large_profile_edit_stress -- --ignored --nocapture
+cargo test -p scufpad-desktop --release --locked extended_headless_macro_composer -- --ignored --nocapture
+cargo run -p scufpad-core --example performance_probe --release --locked -- --preflight
+cargo run -p scufpad-core --example performance_probe --release --locked
+```
+
+These named checks do not create a native window, start the normal bridge, read user
+profiles, or access controller/uinput nodes. Do not run all ignored tests indiscriminately:
+the separate live driver below requires explicit permission. Seeded checks are not
+coverage-guided fuzzing or proof that all mappings/performance paths are defect-free.
+Findings, measurements and limits: [Rust fuzz/stress report](docs/agent/rust-fuzz.md).
+
+Workspaces must fit the existing 1 MiB framed bridge limit as well as structural
+layer/macro bounds. Oversized edits are rejected without replacing the current workspace.
+Near the frame limit, `GetProfile` may omit optional telemetry; use `GetState` for it.
+
 The optional virtual-controller round-trip checks evdev and an independent SDL3
 joystick reader. With all games closed and explicit permission to create a temporary
 virtual controller, run:
