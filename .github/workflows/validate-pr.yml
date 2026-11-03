@@ -4,14 +4,25 @@ on:
   pull_request:
     branches: [release]
 
+permissions:
+  contents: read
+
 jobs:
   validate-source:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Verify source branch is dev
+      - name: Verify release source
+        # One-time migration exception; normal releases continue to come from dev.
         run: |
-          if [ "${{ github.head_ref }}" != "dev" ]; then
-            echo "::error::Only the dev branch can be merged into release. Source: ${{ github.head_ref }}"
+          if [ "$SOURCE_REPO" != "$GH_REPO" ]; then
+            echo "::error::Release PRs must originate in this repository."
             exit 1
           fi
-          echo "Source branch is dev. OK."
+          case "$SOURCE_BRANCH" in
+            dev|migration/rust-rewrite) ;;
+            *) echo "::error::Release source must be dev or migration/rust-rewrite."; exit 1 ;;
+          esac
+        env:
+          SOURCE_BRANCH: ${{ github.head_ref }}
+          SOURCE_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          GH_REPO: ${{ github.repository }}

@@ -5,45 +5,51 @@ on:
     branches: [release]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: rust-release
+  cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  validate:
+    uses: ./.github/workflows/ci.yml
 
+  release:
+    needs: validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: scufpad-rust-linux-x64
+          path: ${{ runner.temp }}/release-assets
+      - name: Verify release archive
+        working-directory: ${{ runner.temp }}/release-assets
+        run: sha256sum --check scufpad-rust-linux-x64.tar.gz.sha256
       - name: Determine next version
         id: version
         run: |
-          latest=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
-          if [ -z "$latest" ]; then
-            next="v1.0.0"
-          else
-            IFS='.' read -r major minor patch <<< "${latest#v}"
-            patch=$((patch + 1))
-            next="v${major}.${minor}.${patch}"
-          fi
-          echo "tag=$next" >> "$GITHUB_OUTPUT"
-          echo "Next version: $next"
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-          dotnet-quality: 'preview'
-
-      - name: Publish linux-x64 AOT binary
-        run: dotnet publish src/Scufpad/scufpad.csproj -c Release -r linux-x64 -o publish/
-
-      - name: Create GitHub Release
+          tag=$(python3 tools/next_release_tag.py)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+      - name: Publish native Rust applications (resume the same release on retry)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: Scufpad ${{ steps.version.outputs.tag }}
+          draft: false
+          make_latest: legacy
           generate_release_notes: true
-          files: publish/Scufpad
+          fail_on_unmatched_files: true
+          files: |
+            ${{ runner.temp }}/release-assets/scufpad-rust-linux-x64.tar.gz
+            ${{ runner.temp }}/release-assets/scufpad-rust-linux-x64.tar.gz.sha256
