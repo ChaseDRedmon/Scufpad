@@ -1,0 +1,38 @@
+name: Rust validation
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Prepare isolated verification directory
+        run: mkdir -p /tmp/opencode
+      - name: Install native desktop build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev dbus python3-dbus python3-gi
+      - name: Select Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy --component rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check lints
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Run Rust tests
+        run: cargo test --workspace --all-targets --locked
+      - name: Build native applications
+        run: cargo build --workspace --release --locked
+      - name: Check desktop helpers without hardware or a display
+        run: ./target/release/scufpad-editor --self-test
+      - name: Check installation tools
+        run: python3 tests/installation_tools_test.py
+      - name: Check performance review helpers without applications or hardware
+        run: python3 tests/performance_review_test.py
+      - name: Check native applications with private IPC and no hardware
+        run: python3 tests/rust_application_test.py
+      - name: Check tray using a private session bus and no hardware
+        run: /usr/bin/python3 tests/rust_tray_test.py

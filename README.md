@@ -1,350 +1,137 @@
-# Scufpad
+# Scufpad (Rust)
 
-A Linux application that bridges a Scuf Envision Pro V2 controller to a virtual Xbox Elite 2 controller via the uinput
-subsystem.
+A Linux controller bridge and native desktop editor for the SCUF Envision Pro V2.
+The workspace contains `scufpad-core`, the `scufpad` CLI/background service and the
+`scufpad-editor` egui desktop. These applications do not require .NET or the C# checkout.
 
-## Overview
+## Build and run
 
-The Scuf Envision Pro V2 controller (VID: `0x1b1c`, PID: `0x3a05`) uses highly non-standard evdev mappings that cause
-incorrect button/axis assignments in most Linux games. This bridge:
+Requirements: Linux x86-64, the pinned Rust 1.99.1 toolchain, and native X11/Wayland
+and OpenGL libraries. Python 3.11+ is needed only for installation and runtime checks.
 
-1. **Reads** input from the physical Scuf controller via evdev
-2. **Translates** the non-standard mappings to standard Xbox Elite 2 format
-3. **Outputs** to a virtual gamepad that games recognize correctly
-
-The virtual controller appears to games as a standard Xbox Elite 2 controller (Microsoft VID: `0x045e`, PID: `0x0b12`).
-
-## Requirements
-
-- Linux with uinput support
-- .NET 10.0 or later
-- Scuf Envision Pro V2 controller (VID: `0x1b1c`, PID: `0x3a05`)
-
-## Quick Start
-
-```bash
-# 1. Set up udev rules (one-time)
-sudo tee /etc/udev/rules.d/99-scuf.rules << 'EOF'
-SUBSYSTEM=="input", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", MODE="0666"
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", MODE="0666"
-KERNEL=="uinput", MODE="0666"
-EOF
-
-# 2. Reload udev rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-
-# 3. Load uinput module
-sudo modprobe uinput
-
-# 4. Run the bridge
-dotnet run --project src/Scufpad
+```sh
+cargo build --workspace --release --locked
+./target/release/scufpad-editor
 ```
 
-## Game-Specific Configuration
+The editor starts or attaches to the bridge and shows its actual running status.
+Closing the editor leaves the bridge running. Normal gamepad forwarding starts
+automatically; no paddle/SAX setup or Enable click is needed for ordinary gamepad use.
+The saved custom profile, including keyboard/mouse actions and macros, activates after
+all six paddle/SAX inputs verify independently. Until then, only normal gamepad inputs
+forward. Loss of verification returns to normal forwarding without removing the virtual
+gamepad. USB is supported; wireless is not implemented. Do not run competing bridges.
 
-### Steam Games (Important!)
+Stop All removes every virtual output and remains stopped across reports, reconnects
+and profile application. Use **Resume outputs** or `scufpad --arm` to resume. Applying a
+profile releases the old custom actions but preserves the current running/stopped intent.
 
-For the best experience with Steam games, you need to **disable Steam Input** and tell SDL to ignore the physical
-controller:
+On desktops with a StatusNotifier tray, the running bridge shows its connection and
+output state. The icon stays when the editor closes. Its menu opens the editor, resumes
+outputs, stops all outputs, or stops the bridge. A missing tray host does not stop the
+bridge; use the editor or CLI instead. Hardware-free previews do not show a tray icon.
+An editor opened from the tray attaches without automatically starting a stopped bridge.
 
-#### 1. Disable Steam Input for the Game
+For a hardware-free preview isolated from normal profiles and the installed service:
 
-1. Right-click the game in Steam → **Properties**
-2. Go to **Controller** tab
-3. Set **Override for [Game]** to **Disable Steam Input**
+```sh
+SCUFPAD_NO_HARDWARE=1 SCUFPAD_PIPE_NAME=scufpad-rust-preview \
+SCUFPAD_CONFIG_HOME="$HOME/.cache/scufpad/rust-preview/config" \
+XDG_DATA_HOME="$HOME/.cache/scufpad/rust-preview/data" \
+./target/release/scufpad-editor
 
-#### 2. Add Launch Options (SDL Games)
-
-For games using SDL (like Stardew Valley), add this to the Steam launch options:
-
-```
-SDL_GAMECONTROLLER_IGNORE_DEVICES=0x1b1c/0x3a05 %command%
-```
-
-This tells SDL to ignore the physical Scuf controller so only the virtual Xbox controller is used.
-
-**Example for Stardew Valley:**
-
-1. Right-click Stardew Valley → **Properties**
-2. In **Launch Options**, enter:
-   ```
-   SDL_GAMECONTROLLER_IGNORE_DEVICES=0x1b1c/0x3a05 %command%
-   ```
-3. In the **Controller** tab, disable Steam Input
-
-### Non-Steam Games
-
-The bridge grabs the physical controller exclusively, so most games will only see the virtual Xbox controller. However,
-some games may need the `SDL_GAMECONTROLLER_IGNORE_DEVICES` environment variable set before launching.
-
-## Setup Details
-
-### 1. Create udev rules
-
-Create `/etc/udev/rules.d/99-scuf.rules`:
-
-```bash
-sudo tee /etc/udev/rules.d/99-scuf.rules << 'EOF'
-SUBSYSTEM=="input", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", MODE="0666"
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", MODE="0666"
-KERNEL=="uinput", MODE="0666"
-EOF
+# Stop that preview's independent background service afterward.
+SCUFPAD_PIPE_NAME=scufpad-rust-preview ./target/release/scufpad --stop
 ```
 
-### 2. Reload udev rules
+## CLI
 
-```bash
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+```sh
+./target/release/scufpad --help
+./target/release/scufpad --daemon
+./target/release/scufpad --status
+./target/release/scufpad --stop
 ```
 
-Then unplug and replug your controller.
+Profiles, keyboard/mouse bindings, finite macros, held/toggled layers, setup and output
+telemetry are shared between the CLI/service and desktop. Version-1 camelCase JSON and
+PascalCase enum names remain compatible with the reference implementation.
 
-### 3. Load the uinput module
+## Verification
 
-```bash
-sudo modprobe uinput
+```sh
+mkdir -p /tmp/opencode
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --all-targets --locked
+cargo build --workspace --release --locked
+./target/release/scufpad-editor --self-test
+python3 tests/installation_tools_test.py
+python3 tests/rust_application_test.py
+python3 tests/performance_review_test.py
 ```
 
-To load uinput automatically on boot:
+For the isolated tray integration check, install `dbus-run-session` and the system
+Python D-Bus and GLib bindings, then run `/usr/bin/python3 tests/rust_tray_test.py`.
+The check uses a private session bus and does not access controller hardware.
 
-```bash
-echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf
+The optional virtual-controller round-trip checks evdev and an independent SDL3
+joystick reader. With all games closed and explicit permission to create a temporary
+virtual controller, run:
+
+```sh
+python3 tests/rust_roundtrip_test.py --self-test
+python3 tests/rust_roundtrip_test.py --run-live --games-closed
+python3 tests/rust_roundtrip_test.py --run-live --games-closed --profile
 ```
 
-### 4. Verify setup
+The live check requires writable `/dev/uinput`, permission to read its event node,
+SDL3, and user and mount namespaces with bind mounts enabled. It isolates the SDL
+reader from host input devices and removes its virtual device afterward. It does not
+test a physical USB controller, SDL gamepad mapping, or a game. The live driver also
+refuses to run when `SCUFPAD_NO_HARDWARE=1`.
+The profile mode measures optimized synthetic A-button passthrough through the
+kernel and an SDL joystick reader. Its timings include harness scheduling and SDL
+polling; they do not measure physical USB, daemon polling, custom mappings, or games.
 
-```bash
-# Check controller is detected
-lsusb | grep 1b1c:3a05
+Runtime checks use private endpoints/configuration and explicitly disable hardware.
+Live USB/output parity and complete interactive/file-picker acceptance are not claimed.
+Obtain approval with games closed and owned interception before live output testing.
+The installed .NET app and user profiles were not replaced during development or relocation.
 
-# Check device permissions
-ls -la /dev/input/by-id/*Envision*
-ls -la /dev/uinput
+## Per-user package and menu entry
+
+```sh
+python3 tools/install_linux.py package --runtime rust \
+  --output "$HOME/.cache/scufpad/bundle-rust" \
+  --archive "$HOME/.cache/scufpad/scufpad-rust-linux-x64.tar.gz"
+python3 "$HOME/.cache/scufpad/bundle-rust/install.py" install
 ```
 
-## Usage
+Use an unused output directory. Run as your normal user, not root. The installer refuses
+existing installation targets; it never silently replaces a running or modified app.
+It installs commands under `~/.local/bin`, application files under `~/.local/lib/scufpad`,
+and a menu entry under `$XDG_DATA_HOME/applications`. Native Linux libraries and current
+controller permissions remain necessary. No udev, login autostart or systemd changes occur.
 
-```bash
-# Run from source
-dotnet run --project src/Scufpad
+Close the editor and stop the bridge before uninstalling:
 
-# Or build and run
-dotnet build
-./src/Scufpad/bin/Debug/net10.0/Scufpad
-
-# AOT publish (single binary)
-dotnet publish -c Release -r linux-x64
+```sh
+python3 "$HOME/.local/lib/scufpad/install.py" uninstall
 ```
 
-## Architecture
+Profiles are preserved. A custom `--prefix /absolute/path` supports isolated installation.
+The installer retains legacy bundle compatibility, but native packaging uses `--runtime rust`;
+no .NET source or SDK is required for that path.
 
-### Data Flow Pipeline
+## Project records
 
-```
-Physical Scuf Controller
-        ↓
-EvdevReader (reads evdev events)
-        ↓
-InputPoller (multiplexes with poll(2), 4ms timeout ≈ 250Hz)
-        ↓
-EnvisionMapping (translates Scuf's non-standard mappings)
-        ↓
-InputFilter (applies deadzone and jitter filtering)
-        ↓
-VirtualGamepad (emits to virtual Xbox Elite 2 via uinput)
-        ↓
-Games see standard Xbox controller
-```
+- [Approved scope](docs/product/VISION.md) and [roadmap](docs/product/ROADMAP.md).
+- [Port verification and cutover boundary](docs/agent/rust-port.md).
+- [Current relocation evidence](docs/agent/progress.md).
+- [Full Rust performance review and measurement limits](docs/agent/rust-performance.md).
+- [Automatic forwarding, custom-input verification and restart](docs/agent/rust-startup.md).
+- [Rust 1.99.1 release notes and application review](docs/agent/rust-1.99-review.md).
 
-### Project Structure
-
-```
-src/Scufpad/
-├── Discovery/           # Device discovery via /sys/class
-│   └── DeviceDiscovery.cs
-├── Input/               # Input device readers
-│   ├── EvdevReader.cs   # Reads evdev input events
-│   ├── HidrawReader.cs  # Reads raw HID reports (optional)
-│   └── InputPoller.cs   # Multiplexes input with poll(2)
-├── Interop/             # P/Invoke bindings
-│   ├── Hidraw.cs        # hidraw ioctl constants
-│   ├── Libc.cs          # libc functions (open, read, ioctl, poll)
-│   ├── LinuxInput.cs    # input_event struct, button/axis codes
-│   └── Uinput.cs        # uinput ioctl constants
-├── Mapping/             # Input translation and filtering
-│   ├── EnvisionMapping.cs  # Scuf V2 → Xbox mapping
-│   ├── InputFilter.cs      # Deadzone and jitter filtering
-│   └── InputState.cs       # Controller state representation
-├── Output/              # Virtual device creation
-│   └── VirtualGamepad.cs   # Creates Xbox Elite 2 via uinput
-├── Services/            # Main service orchestration
-│   └── BridgeService.cs    # Main loop coordination
-└── Program.cs           # Entry point
-```
-
-## Hardware Mapping Reference
-
-### Scuf Envision Pro V2 Axis Mappings
-
-The V2 uses completely non-standard axis positions:
-
-| Scuf Axis         | evdev Code     | Value Range     | Maps To       |
-|-------------------|----------------|-----------------|---------------|
-| Left Stick X      | ABS_X (0)      | -32768 to 32767 | Left Stick X  |
-| Left Stick Y      | ABS_Y (1)      | -32768 to 32767 | Left Stick Y  |
-| **Right Stick X** | **ABS_Z (2)**  | -32768 to 32767 | Right Stick X |
-| **Left Trigger**  | **ABS_RX (3)** | 0 to 1023       | Left Trigger  |
-| **Right Trigger** | **ABS_RY (4)** | 0 to 1023       | Right Trigger |
-| **Right Stick Y** | **ABS_RZ (5)** | -32768 to 32767 | Right Stick Y |
-| D-pad X           | ABS_HAT0X (16) | -1 to 1         | D-pad X       |
-| D-pad Y           | ABS_HAT0Y (17) | -1 to 1         | D-pad Y       |
-
-**Bold** = Non-standard mapping (differs from typical Xbox controllers)
-
-### Scuf Envision Pro V2 Button Mappings
-
-The V2 uses highly non-standard button codes:
-
-| Scuf Button | evdev Code           | Standard Code | Maps To           |
-|-------------|----------------------|---------------|-------------------|
-| A           | BTN_SOUTH (0x130)    | BTN_SOUTH     | A Button          |
-| B           | BTN_EAST (0x131)     | BTN_EAST      | B Button          |
-| **X**       | **BTN_C (0x132)**    | BTN_WEST      | X Button          |
-| Y           | BTN_NORTH (0x133)    | BTN_NORTH     | Y Button          |
-| **LB**      | **BTN_WEST (0x134)** | BTN_TL        | Left Bumper       |
-| **RB**      | **BTN_Z (0x135)**    | BTN_TR        | Right Bumper      |
-| **L3**      | **BTN_TL2 (0x138)**  | BTN_THUMBL    | Left Stick Click  |
-| **R3**      | **BTN_TR2 (0x139)**  | BTN_THUMBR    | Right Stick Click |
-| Select      | BTN_TL (0x136)       | BTN_SELECT    | Back/Select       |
-| Start       | BTN_TR (0x137)       | BTN_START     | Start             |
-| Guide       | BTN_MODE (0x13c)     | BTN_MODE      | Guide/Home        |
-| Paddle 1    | BTN_TRIGGER_HAPPY1   | -             | Paddle 1          |
-| Paddle 2    | BTN_TRIGGER_HAPPY2   | -             | Paddle 2          |
-| Paddle 3    | BTN_TRIGGER_HAPPY3   | -             | Paddle 3          |
-
-**Bold** = Non-standard mapping
-
-**Note:** The V2 only has 3 paddle buttons, not 4.
-
-## Performance Tuning
-
-The bridge is optimized for low-latency input:
-
-| Setting                  | Value         | Purpose                                       |
-|--------------------------|---------------|-----------------------------------------------|
-| Poll timeout             | 4ms           | ~250Hz polling for sub-frame latency at 60fps |
-| Stick deadzone           | 3500 (~10.7%) | Eliminates stick drift                        |
-| Trigger deadzone         | 10 (~1%)      | Minimal deadzone for responsiveness           |
-| Stick jitter threshold   | 300           | Filters analog noise                          |
-| Trigger jitter threshold | 20 (~2%)      | Low threshold for responsive triggers         |
-
-These defaults can be adjusted in `InputFilter.cs` if needed.
-
-## Troubleshooting
-
-### "Permission denied" errors
-
-```bash
-# Verify udev rules
-cat /etc/udev/rules.d/99-scuf.rules
-
-# Reload rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-
-# Unplug and replug controller
-# Check permissions
-ls -la /dev/hidraw* /dev/uinput /dev/input/event*
-```
-
-### "uinput device not found"
-
-```bash
-# Load the module
-sudo modprobe uinput
-
-# Verify it's loaded
-lsmod | grep uinput
-```
-
-### Controller not detected
-
-```bash
-# Check USB connection
-lsusb | grep 1b1c
-
-# View kernel messages
-dmesg | tail -20
-
-# Ensure you have the V2 controller (PID 3a05)
-```
-
-### Game sees both controllers / double input
-
-Make sure:
-
-1. The bridge is running before starting the game
-2. Steam Input is disabled for the game
-3. `SDL_GAMECONTROLLER_IGNORE_DEVICES=0x1b1c/0x3a05` is set (for SDL games)
-
-### Trigger feels laggy or unresponsive
-
-This was fixed in recent updates. If you experience trigger latency:
-
-1. Ensure you're running the latest version
-2. The poll timeout should be 4ms (not 100ms)
-3. The trigger jitter threshold should be 20 (not 75)
-
-## Building
-
-```bash
-# Debug build
-dotnet build
-
-# Release build
-dotnet build -c Release
-
-# Run tests
-dotnet test
-
-# AOT publish (single binary, no .NET runtime required)
-dotnet publish -c Release -r linux-x64
-```
-
-## Testing
-
-```bash
-# Run all tests
-dotnet test
-
-# Run specific test project
-dotnet test tests/scufpad.Tests.Unit
-dotnet test tests/scufpad.Tests.Integration
-
-# Test with evtest
-evtest  # Select the virtual Xbox controller to verify output
-```
-
-## Technical Notes
-
-### Why evdev grab is necessary
-
-The bridge grabs the physical controller exclusively using `EVIOCGRAB` to:
-
-1. Prevent games from seeing the raw Scuf input with wrong mappings
-2. Prevent double-input (one from physical, one from virtual)
-
-### Why hidraw is optional on V2
-
-V1 hardware reportedly didn't expose the right trigger via evdev, requiring hidraw fallback. V2 hardware provides both
-triggers via evdev (`ABS_RX` for LT, `ABS_RY` for RT), so hidraw is no longer needed. Hidraw processing is disabled to
-avoid latency issues from stale data.
-
-### Multiple evdev devices
-
-The Scuf controller exposes multiple input devices (joystick, mouse emulation, etc.). All are grabbed exclusively to
-prevent input leakage.
-
-## License
-
-MIT
+The original .NET comparison/recovery source remains at
+`/home/chase/Coding/CSharp/Personal/Console/Scufpad`; it is not a build or runtime dependency.

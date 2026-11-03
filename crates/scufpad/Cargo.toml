@@ -1,0 +1,19 @@
+[package]
+name = "scufpad"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "scufpad"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc.workspace = true
+scufpad-core.workspace = true
+ctrlc = { version = "3.5.2", features = ["termination"] }
+ksni = { version = "=0.3.7", default-features = false, features = ["async-io", "blocking"] }
