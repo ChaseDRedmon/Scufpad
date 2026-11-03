@@ -1,5 +1,26 @@
 # Rust workspace progress
 
+## History migration and issue triage — 2026-10-29
+
+- Initialized Git in this workspace, retaining original `release` commit `2ca0975`
+  and its full C# ancestry. Imported the existing Rust application on new branch
+  `migration/rust-rewrite`; the requested PR targets `release`. The dirty C# checkout
+  and installed application remain untouched. No remote branch is rewritten.
+- Reproduced and fixed #7's X/Y kernel-code reversal. #8's unread-hidraw mechanism
+  is absent in the Rust actor; a real poll/read helper regression confirms reports
+  are consumed and readiness clears. #9 now has early, seat-scoped udev guidance,
+  including the hidraw access Rust requires. Physical hardware confirmation is open.
+- Rust validation now builds/smokes native bundles for CI artifacts. Publication on
+  `release` waits for reusable validation, uses a narrowly scoped write job, and
+  resumes the same commit's release on retry. Retired legacy .NET Qodana and unsafe
+  or check-suppressing housekeeping automation; no new secrets/dependencies added.
+- Local gate: **110 Rust tests passed, one live test ignored; 64 Python tests passed**,
+  strict lint/formatting, optimized workspace build and desktop self-test passed.
+  Actual native archive, packaged-binary tests and isolated install/uninstall passed.
+- Details and limits: [rust-migration.md](rust-migration.md). Hosted PR checks and
+  publication are not claimed by local checks. No merge, release, cutover or real
+  device access is authorized by this checkpoint.
+
 ## Rust 1.99.1 update and application review — 2026-10-28
 
 - Installed and pinned Rust 1.99.1 for local builds and CI; retained and verified the
@@ -123,9 +144,9 @@ Original reference: `/home/chase/Coding/CSharp/Personal/Console/Scufpad`.
   was refreshed after relocation: 1868 nodes, 4202 edges, 108 communities. Manifest
   extraction and previous identity/AXAML limits remain; source/builds are authoritative.
 
-This directory is deliberately not initialized as a Git repository. No remote, commit,
-push, release or application cutover was performed. The session working directory is
-now this project. Verification artifacts: `/tmp/opencode/scufpad-rust-relocation/`;
+At that relocation checkpoint this directory was deliberately not initialized as a
+Git repository. No remote, commit, push, release or application cutover had been
+performed. Git initialization is now recorded in the migration entry above. Verification artifacts: `/tmp/opencode/scufpad-rust-relocation/`;
 preservation manifest: `/tmp/opencode/scufpad-rust-relocation.json`.
 
 The prior hardware/interactive acceptance boundary remains unchanged; see

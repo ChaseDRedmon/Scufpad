@@ -1,4 +1,6 @@
 /target/
+/.idea/
+/.serena/
 __pycache__/
 *.pyc
 graphify-out/

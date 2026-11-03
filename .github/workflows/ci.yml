@@ -1,15 +1,22 @@
 name: Rust validation
 
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: [dev]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Prepare isolated verification directory
         run: mkdir -p /tmp/opencode
       - name: Install native desktop build dependencies
@@ -30,9 +37,31 @@ jobs:
         run: ./target/release/scufpad-editor --self-test
       - name: Check installation tools
         run: python3 tests/installation_tools_test.py
+      - name: Check release workflows and device permissions documentation
+        run: python3 tests/workflows_test.py
       - name: Check performance review helpers without applications or hardware
         run: python3 tests/performance_review_test.py
       - name: Check native applications with private IPC and no hardware
         run: python3 tests/rust_application_test.py
       - name: Check tray using a private session bus and no hardware
         run: /usr/bin/python3 tests/rust_tray_test.py
+      - name: Check round-trip harness without virtual devices
+        run: python3 tests/rust_roundtrip_test.py --self-test
+      - name: Package native Rust applications
+        run: |
+          python3 tools/install_linux.py package --runtime rust \
+            --output "$RUNNER_TEMP/scufpad-bundle" \
+            --archive "$RUNNER_TEMP/scufpad-rust-linux-x64.tar.gz"
+          (cd "$RUNNER_TEMP" && sha256sum scufpad-rust-linux-x64.tar.gz > scufpad-rust-linux-x64.tar.gz.sha256)
+      - name: Smoke-test packaged applications without hardware
+        run: python3 tests/rust_application_test.py
+        env:
+          SCUFPAD_RUST_BIN: ${{ runner.temp }}/scufpad-bundle/bridge/Scufpad
+          SCUFPAD_RUST_EDITOR: ${{ runner.temp }}/scufpad-bundle/editor/Scufpad.Desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scufpad-rust-linux-x64
+          path: |
+            ${{ runner.temp }}/scufpad-rust-linux-x64.tar.gz
+            ${{ runner.temp }}/scufpad-rust-linux-x64.tar.gz.sha256
+          if-no-files-found: error

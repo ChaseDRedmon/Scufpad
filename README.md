@@ -44,6 +44,40 @@ XDG_DATA_HOME="$HOME/.cache/scufpad/rust-preview/data" \
 SCUFPAD_PIPE_NAME=scufpad-rust-preview ./target/release/scufpad --stop
 ```
 
+## Controller permissions (Linux desktop)
+
+Run Scufpad as your normal user, never as root. On a systemd-logind desktop, an
+administrator can put these rules in `/etc/udev/rules.d/70-scufpad.rules`:
+
+```udev
+SUBSYSTEM=="input", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="3a05", TAG+="uaccess"
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"
+```
+
+The filename must sort **before `73-seat-late.rules`**, not `99-...`, so logind
+can apply ACLs to all controller interfaces. These rules grant access to the active
+local seat user rather than every local process. `/dev/uinput` can synthesize keyboard
+input; do not make it world-writable. Replace any older permissive Scufpad rules rather
+than leaving both installed. The installer does not change device permissions.
+
+After saving the rules, load uinput and reload/reapply the rules with games closed
+and the bridge stopped:
+
+```sh
+sudo modprobe uinput
+sudo udevadm control --reload-rules
+sudo udevadm trigger --action=add --subsystem-match=misc --sysname-match=uinput
+```
+
+Unplug and reconnect the controller, then restart Scufpad as your normal user.
+The Rust bridge **requires hidraw** for its verified USB decoder and consumes those
+reports; the old C# workaround of removing hidraw access does not apply. It also needs
+read access to all six controller evdev interfaces and write access to `/dev/uinput`.
+`uaccess` is for an active local login session, not a headless/system service. On
+systems without systemd-logind, use your distribution's scoped ACL/group mechanism;
+do not grant global input access. No live permission changes are performed by tests.
+
 ## CLI
 
 ```sh
@@ -67,6 +101,7 @@ cargo test --workspace --all-targets --locked
 cargo build --workspace --release --locked
 ./target/release/scufpad-editor --self-test
 python3 tests/installation_tools_test.py
+python3 tests/workflows_test.py
 python3 tests/rust_application_test.py
 python3 tests/performance_review_test.py
 ```
@@ -124,6 +159,30 @@ Profiles are preserved. A custom `--prefix /absolute/path` supports isolated ins
 The installer retains legacy bundle compatibility, but native packaging uses `--runtime rust`;
 no .NET source or SDK is required for that path.
 
+## CI and releases
+
+Pull requests build and test Rust, then upload a checked Linux x86-64 archive containing
+both the bridge and editor plus the per-user installer. A push to `release` runs the
+same validation and packaged-binary smoke tests before publishing that archive and its
+SHA-256 checksum to a GitHub Release. Publication does not run on pull requests. Release
+tags continue the existing `vMAJOR.MINOR.PATCH` sequence with a patch increment,
+reserving existing drafts and reusing the same commit's release on retries. Concurrent
+publication is serialized; GitHub may coalesce pending runs after multiple rapid pushes.
+Builds use Ubuntu 24.04 and the pinned toolchain; they are not static or universal Linux
+packages. Older glibc/native-library compatibility needs separate validation.
+
+The migration branch preserves the original committed C# history unchanged. The C#
+implementation remains available in that history, not in the current source tree.
+The one-time `migration/rust-rewrite` exception allows this PR to target `release`;
+normal release PRs still come from `dev`. Remove the exception after migration and
+bring `dev` forward to the merged Rust history before resuming normal releases.
+Create normal `dev` → `release` PRs manually. The legacy automatic PR bot was retired:
+PRs created with `GITHUB_TOKEN` do not trigger ordinary PR checks; restore automation
+only with an explicitly configured GitHub App token. The old branch-deletion workflow
+was also retired to avoid deleting branches advanced after merge. Delete merged branches
+manually after checking their tip. .NET-only Qodana was replaced by Rust Clippy checks.
+See [issue triage and verification limits](docs/agent/rust-migration.md).
+
 ## Project records
 
 - [Approved scope](docs/product/VISION.md) and [roadmap](docs/product/ROADMAP.md).
@@ -133,5 +192,6 @@ no .NET source or SDK is required for that path.
 - [Automatic forwarding, custom-input verification and restart](docs/agent/rust-startup.md).
 - [Rust 1.99.1 release notes and application review](docs/agent/rust-1.99-review.md).
 
-The original .NET comparison/recovery source remains at
-`/home/chase/Coding/CSharp/Personal/Console/Scufpad`; it is not a build or runtime dependency.
+For the original C# source, browse the parent history before the Rust migration.
+A separate local .NET comparison/recovery checkout was preserved during development;
+it is not a build or runtime dependency.
