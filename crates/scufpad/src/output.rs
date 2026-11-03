@@ -231,8 +231,8 @@ impl Drop for Device {
 const BUTTONS: [(G, u16); 15] = [
     (G::A, 0x130),
     (G::B, 0x131),
-    (G::X, 0x134),
-    (G::Y, 0x133),
+    (G::X, 0x133), // BTN_X / BTN_NORTH: match xpad for the Microsoft device identity.
+    (G::Y, 0x134), // BTN_Y / BTN_WEST.
     (G::LeftBumper, 0x136),
     (G::RightBumper, 0x137),
     (G::View, 0x13a),
@@ -503,7 +503,24 @@ mod tests {
         assert_eq!(values[2], 1);
         assert_eq!(values[14], 1);
         assert_eq!(&values[19..], &[1023, 0, -1, 1]);
-        assert_eq!(BUTTONS[2].1, 0x134);
+        assert_eq!(BUTTONS[2].1, 0x133);
+    }
+
+    #[test]
+    fn xbox_face_buttons_use_kernel_btn_x_and_btn_y_codes() {
+        for (control, expected_code) in [(G::X, 0x133), (G::Y, 0x134)] {
+            let state = OutputState {
+                gamepad_buttons: control.bit(),
+                ..Default::default()
+            };
+            let values = gamepad_values(&state);
+            let pressed: Vec<_> = BUTTONS
+                .iter()
+                .zip(values)
+                .filter_map(|(&(_, code), value)| (value == 1).then_some(code))
+                .collect();
+            assert_eq!(pressed, [expected_code], "{control:?}");
+        }
     }
 
     #[test]

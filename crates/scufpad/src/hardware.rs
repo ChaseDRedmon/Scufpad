@@ -126,3 +126,31 @@ impl Session {
         bail!("Controller read repeatedly interrupted")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::{fd::OwnedFd, unix::net::UnixDatagram};
+
+    #[test]
+    fn readable_raw_reports_are_consumed_and_poll_returns_to_idle() -> Result<()> {
+        // Exercise the real poll/read path without opening controller or uinput nodes.
+        let (sender, receiver) = UnixDatagram::pair()?;
+        receiver.set_nonblocking(true)?;
+        let mut session = Session {
+            raw: File::from(OwnedFd::from(receiver)),
+            _grabs: Vec::new(),
+        };
+        let mut bytes = [0; 64];
+        assert!(!session.poll(0)?);
+        for report in [[0x06; 64], [0x58; 64]] {
+            sender.send(&report)?;
+            assert!(session.poll(0)?);
+            assert_eq!(session.read(&mut bytes)?, Some(64));
+            assert_eq!(bytes, report);
+            assert_eq!(session.read(&mut bytes)?, None);
+            assert!(!session.poll(0)?);
+        }
+        Ok(())
+    }
+}
